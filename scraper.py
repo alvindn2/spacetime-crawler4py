@@ -58,3 +58,16 @@ def is_valid(url):
     except TypeError:
         print("TypeError for ", parsed)
         raise
+
+
+def word_count(url):
+    page = urlopen(url)
+    soup = BeautifulSoup(page, 'html.parser')
+    text = soup.get_text().split()
+    
+    word_list = []
+    for word in text:
+        if word.isalnum():
+            word_list.append(word)
+
+    return(len(word_list))
