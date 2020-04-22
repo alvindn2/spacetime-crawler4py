@@ -5,6 +5,8 @@ import html.parser
 from bs4 import BeautifulSoup
 import utils
 
+unique_pages = set()
+
 
 def scraper(url: str, resp: utils.response.Response):
     defrag_url = urldefrag(url)[0]
@@ -24,9 +26,18 @@ def extract_next_links(url, resp):
 def is_valid(url):
     try:
         parsed = urlparse(url)
-        if parsed.scheme not in set(["http", "https"]):
-            return False
-        return not re.match(
+        url_path = parsed.hostname + parsed.path
+
+        valid_hostname = any(host in url for host in (".ics.uci.edu/",
+                                                      ".cs.uci.edu/",
+                                                      ".informatics.uci.edu/",
+                                                      ".informatics.uci.edu/",
+                                                      ".stat.uci.edu/",
+                                                      "today.uci.edu/department/information_computer_sciences/"))
+
+        valid_scheme = parsed.scheme in set(["http", "https"])
+
+        no_extension = not re.match(
             r".*\.(css|js|bmp|gif|jpe?g|ico"
             + r"|png|tiff?|mid|mp2|mp3|mp4"
             + r"|wav|avi|mov|mpeg|ram|m4v|mkv|ogg|ogv|pdf"
@@ -36,6 +47,14 @@ def is_valid(url):
             + r"|thmx|mso|arff|rtf|jar|csv"
             + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower())
 
+        is_valid_url = valid_hostname and valid_scheme and no_extension
+
+        if is_valid_url:
+            unique_pages.add(url)
+            return True
+        else:
+            return False
+
     except TypeError:
-        print ("TypeError for ", parsed)
+        print("TypeError for ", parsed)
         raise
