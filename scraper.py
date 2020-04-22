@@ -5,7 +5,6 @@ import html.parser
 from bs4 import BeautifulSoup
 import utils
 
-
 unique_pages = set()
 
 
@@ -30,11 +29,11 @@ def is_valid(url):
         url_path = parsed.hostname + parsed.path
 
         valid_hostname = any(host in url for host in (".ics.uci.edu/",
-                                            ".cs.uci.edu/",
-                                            ".informatics.uci.edu/",
-                                            ".informatics.uci.edu/",
-                                            ".stat.uci.edu/",
-                                            "today.uci.edu/department/information_computer_sciences/"))
+                                                      ".cs.uci.edu/",
+                                                      ".informatics.uci.edu/",
+                                                      ".informatics.uci.edu/",
+                                                      ".stat.uci.edu/",
+                                                      "today.uci.edu/department/information_computer_sciences/"))
 
         valid_scheme = parsed.scheme in set(["http", "https"])
 
@@ -51,11 +50,11 @@ def is_valid(url):
         is_valid_url = valid_hostname and valid_scheme and no_extension
 
         if is_valid_url:
-            unique_pages.add(url_path)
+            unique_pages.add(url)
             return True
         else:
             return False
 
     except TypeError:
-        print ("TypeError for ", parsed)
+        print("TypeError for ", parsed)
         raise
