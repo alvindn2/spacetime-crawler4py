@@ -1,9 +1,11 @@
-import re
 from urllib.parse import urlparse, urldefrag
 from urllib.request import urlopen
-import html.parser
 from bs4 import BeautifulSoup
+from collections import Counter
+import html.parser
 import utils
+import re
+
 
 unique_pages = set()
 
@@ -75,15 +77,14 @@ def word_count(url):
 
 
 # Function for Question 3
-def update_word_count(url):
-    response = urlopen(url)
-    soup = BeautifulSoup(response.content)
-    word_dict = dict()
+def update_count_word(url):
+    page = urlopen(url)
+    soup = BeautifulSoup(page, 'html.parser')
 
     for script in soup(["script", "style"]):
         script.extract()
-
-    text = soup.get_text()
+         
+    content = soup.get_text().lower().split()
 
     stopwords = ['a', 'about', 'above', 'across', 'after', 'afterwards']
     stopwords += ['again', 'against', 'all', 'almost', 'alone', 'along']
@@ -137,38 +138,24 @@ def update_word_count(url):
     stopwords += ['within', 'without', 'would', 'yet', 'you', 'your']
     stopwords += ['yours', 'yourself', 'yourselves']
 
-    count = 0
+    # Tokenize the list
+    word_list = []
+    for token in content:
+        if token.isalnum() and (len(token) > 1):
+            word_list.append(token)
 
-    temp = [word for word in text if word not in stopwords]   #remove all the stop word 
-    current = []
-
-    for char in temp:
-        if ((ord(char) < 97 or ord(char) > 122) and (ord(char) < 65 or ord(char) > 90) 
-            and (ord(char) < 48 or ord(char) > 57)):
-            current.append(char)
-
-        else:
-            if len(current) >= 2:
-                aWord = ''.join(current)
-                count += 1
-
-            #insert the word into the dictionary
-            try:
-                word_dict[aWord] += 1
-            except KeyError:
-                word_dict[aWord] = 1  
-
-        current.clear()      
-
-    if len(current) >= 2:
-        aWord = ''.join(current)
-        count += 1
-
-    try:
-        word_dict[aWord] += 1
-    except KeyError:
-        word_dict[aWord] = 1  
+    word_list = [token for token in word_list if token not in stopwords]   
         
-        current.clear()      
+    # Compute word frequency
+    d = dict()
+    for token in word_list:
+        if not token in d:
+            d[token] = 1
+        else:
+            d[token] = d[token] + 1     
 
-    return count
+    # Top 50 common words
+    counts = Counter(d)
+    top_50_words = counts.most_common(50)
+
+    return top_50_words
