@@ -75,13 +75,13 @@ def word_count(url):
 
 
 # Function for Question 3
-def update_count_word(url):
+def update_word_count(url):
     response = urlopen(url)
     soup = BeautifulSoup(response.content)
     word_dict = dict()
 
     for script in soup(["script", "style"]):
-            script.extract()
+        script.extract()
 
     text = soup.get_text()
 
@@ -172,4 +172,3 @@ def update_count_word(url):
         current.clear()      
 
     return count
-    
