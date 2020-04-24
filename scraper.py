@@ -62,8 +62,25 @@ def is_valid(url):
         raise
 
 
-# Function for Question 2
-def word_count(url):
+# Function for #2
+def word_count_checker(url):
+    page = urlopen(url)
+    soup = BeautifulSoup(page, 'html.parser')
+    content = soup.get_text()
+
+    token_list = []
+    for token in content:
+        if not ((token >= '0' and token <= '9') 
+            or (token >= 'A' and token <= 'Z')
+            or (token >= 'a' and token <= 'z')):
+             content = content.replace(token, ' ')
+    token_list += content.lower().split()
+
+    print(url, ':', len(token_list))
+
+
+# Function for #3
+def update_word_count(url):
     page = urlopen(url)
     soup = BeautifulSoup(page, 'html.parser')
     content = soup.get_text()
@@ -148,6 +165,9 @@ def word_count(url):
     top_50_words = counts.most_common(50)
     
     return top_50_words 
+
+
+
 
 
 subdomains = set()
