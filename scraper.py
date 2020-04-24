@@ -5,6 +5,7 @@ from collections import Counter
 import html.parser
 import utils
 import re
+import tldextract
 
 
 unique_pages = set()
@@ -167,13 +168,15 @@ def update_word_count(url):
     return top_50_words 
 
 
-
-
-
-subdomains = set()
-# ex: subdomains = {"vision", "grape"}
-subdomain_pages = dict()
-# ex: subdomain_pages = {"https://vision.ics.uci.edu": 10, "https://grape.ics.uci.edu": 20}
-
 def ics_subdomains(url):
-    pass
+
+    subdomains = set()              # ex: subdomains = {"vision", "grape"}
+    subdomain_pages = dict()        # ex: subdomain_pages = {"https://vision.ics.uci.edu": 10, "https://grape.ics.uci.edu": 20}
+
+    # extract subdomain name
+    parse = tldextract.extract(url)
+    subdomain = parse.subdomain
+
+    # if url contains "www", extract the name
+    if "www" in subdomain:
+        subdomain = subdomain[4:]
