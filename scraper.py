@@ -66,26 +66,9 @@ def is_valid(url):
 def word_count(url):
     page = urlopen(url)
     soup = BeautifulSoup(page, 'html.parser')
-    text = soup.get_text().split()
-    
-    word_list = []
-    for word in text:
-        if word.isalnum():
-            word_list.append(word)
+    content = soup.get_text()
 
-    return(len(word_list))
-
-
-# Function for Question 3
-def update_count_word(url):
-    page = urlopen(url)
-    soup = BeautifulSoup(page, 'html.parser')
-
-    for script in soup(["script", "style"]):
-        script.extract()
-         
-    content = soup.get_text().lower().split()
-
+    # store the stopwords
     stopwords = ['a', 'about', 'above', 'across', 'after', 'afterwards']
     stopwords += ['again', 'against', 'all', 'almost', 'alone', 'along']
     stopwords += ['already', 'also', 'although', 'always', 'am', 'among']
@@ -138,24 +121,39 @@ def update_count_word(url):
     stopwords += ['within', 'without', 'would', 'yet', 'you', 'your']
     stopwords += ['yours', 'yourself', 'yourselves']
 
-    # Tokenize the list
-    word_list = []
+    # tokenize the text (reimplemented from assignment #1)
+    token_list = []
     for token in content:
-        if token.isalnum() and (len(token) > 1):
-            word_list.append(token)
+        if not ((token >= '0' and token <= '9') 
+            or (token >= 'A' and token <= 'Z')
+            or (token >= 'a' and token <= 'z')):
+             content = content.replace(token, ' ')
+    token_list += content.lower().split()
 
-    word_list = [token for token in word_list if token not in stopwords]   
+    # remove token with length < 2  
+    token_list = [token for token in token_list if len(token) > 1]          
+    # remove stopwords
+    token_list = [token for token in token_list if token not in stopwords]   
         
     # Compute word frequency
     d = dict()
-    for token in word_list:
+    for token in token_list:
         if not token in d:
             d[token] = 1
         else:
             d[token] = d[token] + 1     
 
-    # Top 50 common words
+    # Top 50 common words (not sure if we can use Counter...)
     counts = Counter(d)
     top_50_words = counts.most_common(50)
+    
+    return top_50_words 
 
-    return top_50_words
+
+subdomains = set()
+# ex: subdomains = {"vision", "grape"}
+subdomain_pages = dict()
+# ex: subdomain_pages = {"https://vision.ics.uci.edu": 10, "https://grape.ics.uci.edu": 20}
+
+def ics_subdomains(url):
+    pass
