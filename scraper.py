@@ -173,32 +173,33 @@ def update_word_count(url):
         page = urlopen(url)
         soup = BeautifulSoup(page, 'html.parser')
         content = soup.get_text()
+
+        # Split by non alphanumeric characters
+        for token in re.split('[^a-zA-Z0-9]', content):
+            # Check if token is alphanumeric, length is greater than one, and is not a stop
+            if token.isalnum() and len(token) > 2 and token not in stopwords:
+                # Add token to a set of unique words
+                unique_words.add(token.lower())
+
+                # Increment word counter of file
+                word_counter += 1
+
+                # Increment counter of token
+                all_words[token.lower()] += 1
+
+        # Means that there cannot be 10x as many total words as there are unique words in a file.
+        few_duplicates = (word_counter/len(unique_words)) < 10
+        # Checks to make sure there are at least 100 words in a file, not too low information
+        large_word_count = word_counter > 50
+        # Checks if the number of words is larger than current largest file
+        larger_than_best = word_counter > longest_page_word_count
+
+        if few_duplicates and large_word_count and larger_than_best:
+            longest_page_url = url
+            longest_page_word_count = word_counter
+
     except:
         print("---HTTP Error in update_word_count(), skipping")
-
-    # Split by non alphanumeric characters
-    for token in re.split('[^a-zA-Z0-9]', content):
-        # Check if token is alphanumeric, length is greater than one, and is not a stop
-        if token.isalnum() and len(token) > 2 and token not in stopwords:
-            # Add token to a set of unique words
-            unique_words.add(token.lower())
-
-            # Increment word counter of file
-            word_counter += 1
-
-            # Increment counter of token
-            all_words[token.lower()] += 1
-
-    # Means that there cannot be 10x as many total words as there are unique words in a file.
-    few_duplicates = (word_counter/len(unique_words)) < 10
-    # Checks to make sure there are at least 100 words in a file, not too low information
-    large_word_count = word_counter > 50
-    # Checks if the number of words is larger than current largest file
-    larger_than_best = word_counter > longest_page_word_count
-
-    if few_duplicates and large_word_count and larger_than_best:
-        longest_page_url = url
-        longest_page_word_count = word_counter
 
 
 def top_50_common():
