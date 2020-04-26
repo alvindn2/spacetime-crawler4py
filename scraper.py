@@ -2,42 +2,92 @@ from urllib.parse import urlparse, urldefrag
 from urllib.request import urlopen
 from bs4 import BeautifulSoup
 from collections import Counter, defaultdict
-import html.parser
 import utils
 import re
-import tldextract
 
 
-unique_pages = set()
+unique_pages = set()                    # Keeps track of all unique pages
+crawled_urls = set()                    # Keeps track of crawled urls
+subdomains = set()                      # Keeps track of all subdomains
+subdomain_pages = defaultdict(set)      # Keeps track of all unique pages per subdomain
+blacklist = set()                       # Keeps track of all urls that should be banned from accessing
+
+longest_page_url = ""                   # Keeps track of page with most words
+longest_page_word_count = 0             # Keeps track of the number of words of the largest file
+all_words = defaultdict(int)            # Keeps track of all words and their frequencies
 
 
 def scraper(url: str, resp):
-    links = extract_next_links(url, resp)
-    return [link for link in links if is_valid(link)]
+    try:
+        x = urlopen(url)
+    except:
+        print("---HTTP Error in scraper(), skipping")
+        return []
+
+    # if is_valid(url) and resp.status == 200:
+    if is_valid(url) and x.getcode() == 200:
+        print("\n\nCrawling...", url)
+        parsed = urlparse(url)
+        host = parsed.hostname
+        path = parsed.path
+        unique_url = get_unique_page(url)
+
+        if ".ics.uci.edu/" in url:
+            ics_subdomains(url)
+
+        global unique_pages
+        unique_pages.add(unique_url)
+        update_word_count(unique_url)
+
+        print("Unique pages: ", len(unique_pages))
+        print("Subdomain_pages: ", {key: len(val) for key, val in subdomain_pages.items()})
+        print("Longest Page URL: ", longest_page_url)
+        print("Longest Word Count: ", longest_page_word_count)
+
+        links = extract_next_links(url, resp)
+        # print("Next links: ", links)
+        return [link for link in links]
+    else:
+        print("\n---INVALID: ", url, x.getcode())
+        return []
 
 
 def extract_next_links(url, resp):
-    # Implementation requred.
-    if is_valid(url) and resp.status in range(200, 300):
-        html_object = BeautifulSoup(resp.raw_response.content, "html.parser")
-        links = [link.get('href') for link in html_object.find_all('a')]
-        return links
+    global crawled_urls
+    parsed = urlparse(url)
+    host = parsed.hostname
+    scheme = parsed.scheme
+
+    links = []
+    page = urlopen(url)
+    html_object = BeautifulSoup(page, "html.parser")
+    for a_tag in html_object.find_all('a'):
+        link = a_tag.get('href')
+        if type(link) is not str:
+            continue
+        if link.startswith("//"):
+            link = link[2:]
+        elif link.startswith("/"):
+            link = scheme+"://"+host+link
+        if link not in unique_pages and is_valid(link) and link not in crawled_urls:
+            crawled_urls.add(link)
+            links.append(link)
+    return links
 
 
 def is_valid(url):
     try:
         defrag_url = urldefrag(url)[0]
         parsed = urlparse(defrag_url)
-        url_path = parsed.hostname + parsed.path
 
-        valid_hostname = any(host in url for host in (".ics.uci.edu/",
-                                                      ".cs.uci.edu/",
-                                                      ".informatics.uci.edu/",
-                                                      ".informatics.uci.edu/",
-                                                      ".stat.uci.edu/",
-                                                      "today.uci.edu/department/information_computer_sciences/"))
+        valid_hosts = [".ics.uci.edu/", ".cs.uci.edu/", ".informatics.uci.edu/", ".informatics.uci.edu/",
+                       ".stat.uci.edu/", "today.uci.edu/department/information_computer_sciences/"]
+        valid_hostname = any(host in url for host in valid_hosts)
 
         valid_scheme = parsed.scheme in set(["http", "https"])
+
+        poss_traps = ["/event/", "/events/", "calendar", "date", "gallery", "image", "wp-content", "index.php", "upload"]
+        no_possible_traps = not any(trap in url for trap in poss_traps)
 
         no_extension = not re.match(
             r".*\.(css|js|bmp|gif|jpe?g|ico"
@@ -49,108 +99,106 @@ def is_valid(url):
             + r"|thmx|mso|arff|rtf|jar|csv"
             + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower())
 
-        is_valid_url = valid_hostname and valid_scheme and no_extension
-
-        if is_valid_url:
-            return True
-        else:
-            return False
+        return valid_hostname and valid_scheme and no_extension and no_possible_traps
 
     except TypeError:
         print("TypeError for ", parsed)
         raise
 
 # store the stopwords
-stopwords = ['a', 'about', 'above', 'across', 'after', 'afterwards']
-stopwords += ['again', 'against', 'all', 'almost', 'alone', 'along']
-stopwords += ['already', 'also', 'although', 'always', 'am', 'among']
-stopwords += ['amongst', 'amoungst', 'amount', 'an', 'and', 'another']
-stopwords += ['any', 'anyhow', 'anyone', 'anything', 'anyway', 'anywhere']
-stopwords += ['are', 'around', 'as', 'at', 'back', 'be', 'became']
-stopwords += ['because', 'become', 'becomes', 'becoming', 'been']
-stopwords += ['before', 'beforehand', 'behind', 'being', 'below']
-stopwords += ['beside', 'besides', 'between', 'beyond', 'bill', 'both']
-stopwords += ['bottom', 'but', 'by', 'call', 'can', 'cannot', 'cant']
-stopwords += ['co', 'computer', 'con', 'could', 'couldnt', 'cry', 'de']
-stopwords += ['describe', 'detail', 'did', 'do', 'done', 'down', 'due']
-stopwords += ['during', 'each', 'eg', 'eight', 'either', 'eleven', 'else']
-stopwords += ['elsewhere', 'empty', 'enough', 'etc', 'even', 'ever']
-stopwords += ['every', 'everyone', 'everything', 'everywhere', 'except']
-stopwords += ['few', 'fifteen', 'fifty', 'fill', 'find', 'fire', 'first']
-stopwords += ['five', 'for', 'former', 'formerly', 'forty', 'found']
-stopwords += ['four', 'from', 'front', 'full', 'further', 'get', 'give']
-stopwords += ['go', 'had', 'has', 'hasnt', 'have', 'he', 'hence', 'her']
-stopwords += ['here', 'hereafter', 'hereby', 'herein', 'hereupon', 'hers']
-stopwords += ['herself', 'him', 'himself', 'his', 'how', 'however']
-stopwords += ['hundred', 'i', 'ie', 'if', 'in', 'inc', 'indeed']
-stopwords += ['interest', 'into', 'is', 'it', 'its', 'itself', 'keep']
-stopwords += ['last', 'latter', 'latterly', 'least', 'less', 'ltd', 'made']
-stopwords += ['many', 'may', 'me', 'meanwhile', 'might', 'mill', 'mine']
-stopwords += ['more', 'moreover', 'most', 'mostly', 'move', 'much']
-stopwords += ['must', 'my', 'myself', 'name', 'namely', 'neither', 'never']
-stopwords += ['nevertheless', 'next', 'nine', 'no', 'nobody', 'none']
-stopwords += ['noone', 'nor', 'not', 'nothing', 'now', 'nowhere', 'of']
-stopwords += ['off', 'often', 'on', 'once', 'one', 'only', 'onto', 'or']
-stopwords += ['other', 'others', 'otherwise', 'our', 'ours', 'ourselves']
-stopwords += ['out', 'over', 'own', 'part', 'per', 'perhaps', 'please']
-stopwords += ['put', 'rather', 're', 's', 'same', 'see', 'seem', 'seemed']
-stopwords += ['seeming', 'seems', 'serious', 'several', 'she', 'should']
-stopwords += ['show', 'side', 'since', 'sincere', 'six', 'sixty', 'so']
-stopwords += ['some', 'somehow', 'someone', 'something', 'sometime']
-stopwords += ['sometimes', 'somewhere', 'still', 'such', 'system', 'take']
-stopwords += ['ten', 'than', 'that', 'the', 'their', 'them', 'themselves']
-stopwords += ['then', 'thence', 'there', 'thereafter', 'thereby']
-stopwords += ['therefore', 'therein', 'thereupon', 'these', 'they']
-stopwords += ['thick', 'thin', 'third', 'this', 'those', 'though', 'three']
-stopwords += ['three', 'through', 'throughout', 'thru', 'thus', 'to']
-stopwords += ['together', 'too', 'top', 'toward', 'towards', 'twelve']
-stopwords += ['twenty', 'two', 'un', 'under', 'until', 'up', 'upon']
-stopwords += ['us', 'very', 'via', 'was', 'we', 'well', 'were', 'what']
-stopwords += ['whatever', 'when', 'whence', 'whenever', 'where']
-stopwords += ['whereafter', 'whereas', 'whereby', 'wherein', 'whereupon']
-stopwords += ['wherever', 'whether', 'which', 'while', 'whither', 'who']
-stopwords += ['whoever', 'whole', 'whom', 'whose', 'why', 'will', 'with']
-stopwords += ['within', 'without', 'would', 'yet', 'you', 'your']
-stopwords += ['yours', 'yourself', 'yourselves']
-
-highest_word_count = defaultdict(int)
-all_words = defaultdict(int)
+stopwords = set()
+stopwords.update(['a', 'about', 'above', 'across', 'after', 'afterwards'])
+stopwords.update(['again', 'against', 'all', 'almost', 'alone', 'along'])
+stopwords.update(['already', 'also', 'although', 'always', 'am', 'among'])
+stopwords.update(['amongst', 'amoungst', 'amount', 'an', 'and', 'another'])
+stopwords.update(['any', 'anyhow', 'anyone', 'anything', 'anyway', 'anywhere'])
+stopwords.update(['are', 'around', 'as', 'at', 'back', 'be', 'became'])
+stopwords.update(['because', 'become', 'becomes', 'becoming', 'been'])
+stopwords.update(['before', 'beforehand', 'behind', 'being', 'below'])
+stopwords.update(['beside', 'besides', 'between', 'beyond', 'bill', 'both'])
+stopwords.update(['bottom', 'but', 'by', 'call', 'can', 'cannot', 'cant'])
+stopwords.update(['co', 'computer', 'con', 'could', 'couldnt', 'cry', 'de'])
+stopwords.update(['describe', 'detail', 'did', 'do', 'done', 'down', 'due'])
+stopwords.update(['during', 'each', 'eg', 'eight', 'either', 'eleven', 'else'])
+stopwords.update(['elsewhere', 'empty', 'enough', 'etc', 'even', 'ever'])
+stopwords.update(['every', 'everyone', 'everything', 'everywhere', 'except'])
+stopwords.update(['few', 'fifteen', 'fifty', 'fill', 'find', 'fire', 'first'])
+stopwords.update(['five', 'for', 'former', 'formerly', 'forty', 'found'])
+stopwords.update(['four', 'from', 'front', 'full', 'further', 'get', 'give'])
+stopwords.update(['go', 'had', 'has', 'hasnt', 'have', 'he', 'hence', 'her'])
+stopwords.update(['here', 'hereafter', 'hereby', 'herein', 'hereupon', 'hers'])
+stopwords.update(['herself', 'him', 'himself', 'his', 'how', 'however'])
+stopwords.update(['hundred', 'i', 'ie', 'if', 'in', 'inc', 'indeed'])
+stopwords.update(['interest', 'into', 'is', 'it', 'its', 'itself', 'keep'])
+stopwords.update(['last', 'latter', 'latterly', 'least', 'less', 'ltd', 'made'])
+stopwords.update(['many', 'may', 'me', 'meanwhile', 'might', 'mill', 'mine'])
+stopwords.update(['more', 'moreover', 'most', 'mostly', 'move', 'much'])
+stopwords.update(['must', 'my', 'myself', 'name', 'namely', 'neither', 'never'])
+stopwords.update(['nevertheless', 'next', 'nine', 'no', 'nobody', 'none'])
+stopwords.update(['noone', 'nor', 'not', 'nothing', 'now', 'nowhere', 'of'])
+stopwords.update(['off', 'often', 'on', 'once', 'one', 'only', 'onto', 'or'])
+stopwords.update(['other', 'others', 'otherwise', 'our', 'ours', 'ourselves'])
+stopwords.update(['out', 'over', 'own', 'part', 'per', 'perhaps', 'please'])
+stopwords.update(['put', 'rather', 're', 's', 'same', 'see', 'seem', 'seemed'])
+stopwords.update(['seeming', 'seems', 'serious', 'several', 'she', 'should'])
+stopwords.update(['show', 'side', 'since', 'sincere', 'six', 'sixty', 'so'])
+stopwords.update(['some', 'somehow', 'someone', 'something', 'sometime'])
+stopwords.update(['sometimes', 'somewhere', 'still', 'such', 'system', 'take'])
+stopwords.update(['ten', 'than', 'that', 'the', 'their', 'them', 'themselves'])
+stopwords.update(['then', 'thence', 'there', 'thereafter', 'thereby'])
+stopwords.update(['therefore', 'therein', 'thereupon', 'these', 'they'])
+stopwords.update(['thick', 'thin', 'third', 'this', 'those', 'though', 'three'])
+stopwords.update(['three', 'through', 'throughout', 'thru', 'thus', 'to'])
+stopwords.update(['together', 'too', 'top', 'toward', 'towards', 'twelve'])
+stopwords.update(['twenty', 'two', 'un', 'under', 'until', 'up', 'upon'])
+stopwords.update(['us', 'very', 'via', 'was', 'we', 'well', 'were', 'what'])
+stopwords.update(['whatever', 'when', 'whence', 'whenever', 'where'])
+stopwords.update(['whereafter', 'whereas', 'whereby', 'wherein', 'whereupon'])
+stopwords.update(['wherever', 'whether', 'which', 'while', 'whither', 'who'])
+stopwords.update(['whoever', 'whole', 'whom', 'whose', 'why', 'will', 'with'])
+stopwords.update(['within', 'without', 'would', 'yet', 'you', 'your'])
+stopwords.update(['yours', 'yourself', 'yourselves'])
 
 
 # Function for #2
-def word_count_checker(url):
-    global highest_word_count
+def update_word_count(url):
+    global all_words
+    global longest_page_url
+    global longest_page_word_count
     global stopwords
     unique_words = set()
-    page = urlopen(url)
-    soup = BeautifulSoup(page, 'html.parser')
-    content = soup.get_text()
+    word_counter = 0
+
+    try:
+        page = urlopen(url)
+        soup = BeautifulSoup(page, 'html.parser')
+        content = soup.get_text()
+    except:
+        print("---HTTP Error in update_word_count(), skipping")
 
     # Split by non alphanumeric characters
     for token in re.split('[^a-zA-Z0-9]', content):
         # Check if token is alphanumeric, length is greater than one, and is not a stop
-        if token.isalnum() and len(token) > 1 and token not in stopwords:
+        if token.isalnum() and len(token) > 2 and token not in stopwords:
             # Add token to a set of unique words
             unique_words.add(token.lower())
 
-    # Gets number of all unique tokens in the HTML content of the word page
-    highest_word_count[url] = len(unique_words)
+            # Increment word counter of file
+            word_counter += 1
 
-
-# Function for #3
-def update_word_count(url):
-    global all_words
-    global stopwords
-    page = urlopen(url)
-    soup = BeautifulSoup(page, 'html.parser')
-    content = soup.get_text()
-
-    # Split by non alphanumeric characters
-    for token in re.split('[^a-zA-Z0-9]', content):
-        # Check if token is alphanumeric, length is greater than one, and is not a stop
-        if token.isalnum() and len(token) > 1 and token not in stopwords:
             # Increment counter of token
             all_words[token.lower()] += 1
+
+    # Means that there cannot be 10x as many total words as there are unique words in a file.
+    few_duplicates = (word_counter/len(unique_words)) < 10
+    # Checks to make sure there are at least 100 words in a file, not too low information
+    large_word_count = word_counter > 50
+    # Checks if the number of words is larger than current largest file
+    larger_than_best = word_counter > longest_page_word_count
+
+    if few_duplicates and large_word_count and larger_than_best:
+        longest_page_url = url
+        longest_page_word_count = word_counter
 
 
 def top_50_common():
@@ -162,14 +210,30 @@ def top_50_common():
 
 
 def ics_subdomains(url):
-
-    subdomains = set()              # ex: subdomains = {"vision", "grape"}
-    subdomain_pages = dict()        # ex: subdomain_pages = {"https://vision.ics.uci.edu": 10, "https://grape.ics.uci.edu": 20}
+    global subdomains           # ex: subdomains = {"vision", "grape"}
+    global subdomain_pages      # ex: subdomain_pages = {"https://vision.ics.uci.edu": {}}
 
     # extract subdomain name
-    parse = tldextract.extract(url)
-    subdomain = parse.subdomain
+    parse = urlparse(url)
+    subdomain = parse.hostname.split(".ics.uci.edu")[0]
 
     # if url contains "www", extract the name
-    if "www" in subdomain:
+    if "www." in subdomain:
         subdomain = subdomain[4:]
+
+    subdomains.add(subdomain)
+
+    unique_page_url = get_unique_page(url)
+    subdomain_pages[subdomain].add(unique_page_url)
+
+def get_unique_page(url):
+    parse = urlparse(url)
+    return parse.scheme + "://" + parse.hostname + parse.path
+
+
+if __name__ == "__main__":
+    frontier = scraper("https://www.ics.uci.edu/", 200)
+    while True:
+        l = frontier.pop(0)
+        frontier.extend(scraper(l, 200))
+        print("Frontier: {}".format(frontier))
