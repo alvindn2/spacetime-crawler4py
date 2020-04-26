@@ -2,7 +2,6 @@ from urllib.parse import urlparse, urldefrag
 from urllib.request import urlopen
 from bs4 import BeautifulSoup
 from collections import Counter, defaultdict
-import utils
 import re
 
 
@@ -27,7 +26,8 @@ def scraper(url: str, resp):
     # if is_valid(url) and resp.status == 200:
     if is_valid(url) and x.getcode() == 200:
         print("\n\nCrawling...", url)
-        parsed = urlparse(url)
+        defrag_url = urldefrag(url)[0]
+        parsed = urlparse(defrag_url)
         host = parsed.hostname
         path = parsed.path
         unique_url = get_unique_page(url)
@@ -41,11 +41,11 @@ def scraper(url: str, resp):
 
         print("Unique pages: ", len(unique_pages))
         print("Subdomain_pages: ", {key: len(val) for key, val in subdomain_pages.items()})
-        print("Longest Page URL: ", longest_page_url)
-        print("Longest Word Count: ", longest_page_word_count)
+        # print("Longest Page URL: ", longest_page_url)
+        # print("Longest Word Count: ", longest_page_word_count)
 
-        links = extract_next_links(url, resp)
-        # print("Next links: ", links)
+        links = extract_next_links(defrag_url, resp)
+        print("Next links {}: {}".format(len(links), links))
         return [link for link in links]
     else:
         print("\n---INVALID: ", url, x.getcode())
@@ -69,7 +69,7 @@ def extract_next_links(url, resp):
             link = link[2:]
         elif link.startswith("/"):
             link = scheme+"://"+host+link
-        if link not in unique_pages and is_valid(link) and link not in crawled_urls:
+        if link not in unique_pages and link not in crawled_urls and is_valid(link):
             crawled_urls.add(link)
             links.append(link)
     return links
@@ -80,13 +80,14 @@ def is_valid(url):
         defrag_url = urldefrag(url)[0]
         parsed = urlparse(defrag_url)
 
-        valid_hosts = [".ics.uci.edu/", ".cs.uci.edu/", ".informatics.uci.edu/", ".informatics.uci.edu/",
-                       ".stat.uci.edu/", "today.uci.edu/department/information_computer_sciences/"]
+        valid_hosts = [".ics.uci.edu/", ".cs.uci.edu/", ".informatics.uci.edu/", ".stat.uci.edu/",
+                       "today.uci.edu/department/information_computer_sciences/"]
         valid_hostname = any(host in url for host in valid_hosts)
 
         valid_scheme = parsed.scheme in set(["http", "https"])
 
-        poss_traps = ["/event/", "/events/", "calendar", "date", "gallery", "image", "wp-content", "index.php", "upload"]
+        poss_traps = ["/event/", "/events/", "calendar", "date", "gallery",
+                      "image", "wp-content", "index.php", "upload", "?share="]
         no_possible_traps = not any(trap in url for trap in poss_traps)
 
         no_extension = not re.match(
@@ -96,10 +97,21 @@ def is_valid(url):
             + r"|ps|eps|tex|ppt|pptx|doc|docx|xls|xlsx|names"
             + r"|data|dat|exe|bz2|tar|msi|bin|7z|psd|dmg|iso"
             + r"|epub|dll|cnf|tgz|sha1"
-            + r"|thmx|mso|arff|rtf|jar|csv"
+            + r"|thmx|mso|arff|rtf|jar|csv|odc"
             + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower())
 
-        return valid_hostname and valid_scheme and no_extension and no_possible_traps
+        if not all([valid_hostname, valid_scheme, no_extension, no_possible_traps]):
+            return False
+        else:
+            unique_url = get_unique_page(url)
+            if unique_url in unique_pages:
+                forum_traps = ["#comment-", "?replytocom="]
+                return not any(trap in url for trap in forum_traps)
+            else:
+                return True
+
+
+        # return valid_hostname and valid_scheme and no_extension and no_possible_traps and no_forum_traps
 
     except TypeError:
         print("TypeError for ", parsed)
@@ -227,14 +239,15 @@ def ics_subdomains(url):
     unique_page_url = get_unique_page(url)
     subdomain_pages[subdomain].add(unique_page_url)
 
+
 def get_unique_page(url):
     parse = urlparse(url)
     return parse.scheme + "://" + parse.hostname + parse.path
 
 
 if __name__ == "__main__":
-    frontier = scraper("https://www.ics.uci.edu/", 200)
+    frontier = scraper("https://www.stat.uci.edu/", 200)
     while True:
         l = frontier.pop(0)
         frontier.extend(scraper(l, 200))
-        print("Frontier: {}".format(frontier))
+        print("Frontier: {}".format(frontier[1:]))
