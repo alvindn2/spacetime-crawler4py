@@ -4,10 +4,10 @@ from bs4 import BeautifulSoup
 from collections import Counter, defaultdict
 import utils
 import re
-import requests
 
 
-unique_pages = set()                    # Keeps track of all pages visited
+unique_pages = set()                    # Keeps track of all unique pages
+crawled_urls = set()                    # Keeps track of crawled urls
 subdomains = set()                      # Keeps track of all subdomains
 subdomain_pages = defaultdict(set)      # Keeps track of all unique pages per subdomain
 blacklist = set()                       # Keeps track of all urls that should be banned from accessing
@@ -18,9 +18,15 @@ all_words = defaultdict(int)            # Keeps track of all words and their fre
 
 
 def scraper(url: str, resp):
-    # print("Crawling...", url)
-    if is_valid(url) and resp.status == 200:
-        # print("***It's valid!")
+    try:
+        x = urlopen(url)
+    except:
+        print("---HTTP Error in scraper(), skipping")
+        return []
+
+    # if is_valid(url) and resp.status == 200:
+    if is_valid(url) and x.getcode() == 200:
+        print("\n\nCrawling...", url)
         parsed = urlparse(url)
         host = parsed.hostname
         path = parsed.path
@@ -31,32 +37,41 @@ def scraper(url: str, resp):
 
         global unique_pages
         unique_pages.add(unique_url)
-        word_count_checker(unique_url)
         update_word_count(unique_url)
 
-        # print("Unique pages: ", unique_pages)
-        # print("Subdomain_pages: ", subdomain_pages)
-        # print("Longest Page URL: ", longest_page_url)
-        # print("Longest Word Count: ", longest_page_word_count)
+        print("Unique pages: ", len(unique_pages))
+        print("Subdomain_pages: ", {key: len(val) for key, val in subdomain_pages.items()})
+        print("Longest Page URL: ", longest_page_url)
+        print("Longest Word Count: ", longest_page_word_count)
 
         links = extract_next_links(url, resp)
         # print("Next links: ", links)
         return [link for link in links]
     else:
+        print("\n---INVALID: ", url, x.getcode())
         return []
 
 
 def extract_next_links(url, resp):
-    # Implementation required.
+    global crawled_urls
     parsed = urlparse(url)
     host = parsed.hostname
+    scheme = parsed.scheme
 
     links = []
     page = urlopen(url)
     html_object = BeautifulSoup(page, "html.parser")
     for a_tag in html_object.find_all('a'):
-        for link in a_tag.get('href'):
-            links.append(link) if not link.startswith("/") else links.append(host+link)
+        link = a_tag.get('href')
+        if type(link) is not str:
+            continue
+        if link.startswith("//"):
+            link = link[2:]
+        elif link.startswith("/"):
+            link = scheme+"://"+host+link
+        if link not in unique_pages and is_valid(link) and link not in crawled_urls:
+            crawled_urls.add(link)
+            links.append(link)
     return links
 
 
@@ -65,14 +80,14 @@ def is_valid(url):
         defrag_url = urldefrag(url)[0]
         parsed = urlparse(defrag_url)
 
-        valid_hostname = any(host in url for host in (".ics.uci.edu/",
-                                                      ".cs.uci.edu/",
-                                                      ".informatics.uci.edu/",
-                                                      ".informatics.uci.edu/",
-                                                      ".stat.uci.edu/",
-                                                      "today.uci.edu/department/information_computer_sciences/"))
+        valid_hosts = [".ics.uci.edu/", ".cs.uci.edu/", ".informatics.uci.edu/", ".informatics.uci.edu/",
+                       ".stat.uci.edu/", "today.uci.edu/department/information_computer_sciences/"]
+        valid_hostname = any(host in url for host in valid_hosts)
 
         valid_scheme = parsed.scheme in set(["http", "https"])
+
+        poss_traps = ["/event/", "/events/", "calendar", "date", "gallery", "image", "wp-content", "index.php", "upload"]
+        no_possible_traps = not any(trap in url for trap in poss_traps)
 
         no_extension = not re.match(
             r".*\.(css|js|bmp|gif|jpe?g|ico"
@@ -84,10 +99,10 @@ def is_valid(url):
             + r"|thmx|mso|arff|rtf|jar|csv"
             + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower())
 
-        return valid_hostname and valid_scheme and no_extension
+        return valid_hostname and valid_scheme and no_extension and no_possible_traps
 
     except TypeError:
-        # print("TypeError for ", parsed)
+        print("TypeError for ", parsed)
         raise
 
 # store the stopwords
@@ -146,15 +161,20 @@ stopwords.update(['yours', 'yourself', 'yourselves'])
 
 
 # Function for #2
-def word_count_checker(url):
+def update_word_count(url):
+    global all_words
     global longest_page_url
     global longest_page_word_count
     global stopwords
     unique_words = set()
     word_counter = 0
-    page = urlopen(url)
-    soup = BeautifulSoup(page, 'html.parser')
-    content = soup.get_text()
+
+    try:
+        page = urlopen(url)
+        soup = BeautifulSoup(page, 'html.parser')
+        content = soup.get_text()
+    except:
+        print("---HTTP Error in update_word_count(), skipping")
 
     # Split by non alphanumeric characters
     for token in re.split('[^a-zA-Z0-9]', content):
@@ -162,7 +182,12 @@ def word_count_checker(url):
         if token.isalnum() and len(token) > 2 and token not in stopwords:
             # Add token to a set of unique words
             unique_words.add(token.lower())
+
+            # Increment word counter of file
             word_counter += 1
+
+            # Increment counter of token
+            all_words[token.lower()] += 1
 
     # Means that there cannot be 10x as many total words as there are unique words in a file.
     few_duplicates = (word_counter/len(unique_words)) < 10
@@ -174,22 +199,6 @@ def word_count_checker(url):
     if few_duplicates and large_word_count and larger_than_best:
         longest_page_url = url
         longest_page_word_count = word_counter
-
-
-# Function for #3
-def update_word_count(url):
-    global all_words
-    global stopwords
-    page = urlopen(url)
-    soup = BeautifulSoup(page, 'html.parser')
-    content = soup.get_text()
-
-    # Split by non alphanumeric characters
-    for token in re.split('[^a-zA-Z0-9]', content):
-        # Check if token is alphanumeric, length is greater than one, and is not a stop
-        if token.isalnum() and len(token) > 2 and token not in stopwords:
-            # Increment counter of token
-            all_words[token.lower()] += 1
 
 
 def top_50_common():
@@ -219,8 +228,12 @@ def ics_subdomains(url):
 
 def get_unique_page(url):
     parse = urlparse(url)
-    return parse.scheme + "://" + parse.hostname + "/" + parse.path
+    return parse.scheme + "://" + parse.hostname + parse.path
 
 
 if __name__ == "__main__":
-    pass
+    frontier = scraper("https://www.ics.uci.edu/", 200)
+    while True:
+        l = frontier.pop(0)
+        frontier.extend(scraper(l, 200))
+        print("Frontier: {}".format(frontier))
