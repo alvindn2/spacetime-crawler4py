@@ -41,8 +41,8 @@ def scraper(url: str, resp):
 
         print("Unique pages: ", len(unique_pages))
         print("Subdomain_pages: ", {key: len(val) for key, val in subdomain_pages.items()})
-        # print("Longest Page URL: ", longest_page_url)
-        # print("Longest Word Count: ", longest_page_word_count)
+        print("Longest Page URL: ", longest_page_url)
+        print("Longest Word Count: ", longest_page_word_count)
 
         links = extract_next_links(defrag_url, resp)
         print("Next links {}: {}".format(len(links), links))
@@ -246,7 +246,9 @@ def get_unique_page(url):
 
 
 if __name__ == "__main__":
-    frontier = scraper("https://www.stat.uci.edu/", 200)
+    frontier = ["https://www.ics.uci.edu", "https://www.cs.uci.edu",
+                "https://www.informatics.uci.edu", "https://www.stat.uci.edu",
+                "https://today.uci.edu/department/information_computer_sciences"]
     while True:
         l = frontier.pop(0)
         frontier.extend(scraper(l, 200))
