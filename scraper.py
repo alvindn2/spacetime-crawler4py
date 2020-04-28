@@ -2,13 +2,14 @@ from urllib.parse import urlparse, urldefrag
 from urllib.request import urlopen
 from bs4 import BeautifulSoup
 from collections import Counter, defaultdict
+import pickle
 import re
 
 
 unique_pages = set()                    # Keeps track of all unique pages
 crawled_urls = set()                    # Keeps track of crawled urls
 subdomains = set()                      # Keeps track of all subdomains
-subdomain_pages = defaultdict(set)      # Keeps track of all unique pages per subdomain
+subdomain_pages = defaultdict(set)      # Keeps track of all unique pages per subdomain for ics.uci.edu
 blacklist = set()                       # Keeps track of all urls that should be banned from accessing
 
 longest_page_url = ""                   # Keeps track of page with most words
@@ -246,8 +247,49 @@ def get_unique_page(url):
 
 
 if __name__ == "__main__":
-    frontier = scraper("https://www.stat.uci.edu/", 200)
+    frontier = scraper("https://www.ics.uci.edu/", 200)
+    
     while True:
         l = frontier.pop(0)
         frontier.extend(scraper(l, 200))
         print("Frontier: {}".format(frontier[1:]))
+
+    # write unique pages into text
+    with open('up.data', 'wb') as up:
+        pickle.dump(unique_pages, up)
+
+    # write longest page into text
+    with open('lp.data', 'wb') as lp:
+        pickle.dump(longest_page_url, lp)
+
+    # write common words into text
+    with open('cw.data', 'wb') as cw:
+        pickle.dump(top_50_common(), cw)
+
+    # write subdomains and unique pages into text
+    with open('sp.data', 'wb') as sp:
+        pickle.dump(subdomain_pages, sp)
+
+    ##############################
+    #  Printing out information  #
+    ##############################
+
+    # load unique pages 
+    with open('up.data', 'rb') as up:
+        load_up = pickle.load(up)
+        print(load_up)
+
+    # load longest page
+    with open('lp.data', 'rb') as lp:
+        load_lp = pickle.load(lp)
+        print(load_lp)
+
+    # load common words 
+    with open('cw.data', 'rb') as cw:
+        load_cw = pickle.load(cw)
+        print(load_cw)
+
+    # load subdomains and unique pages 
+    with open('sp.data', 'rb') as sp:
+        load_sp = pickle.load(sp)
+        print(load_sp)
