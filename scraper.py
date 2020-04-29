@@ -6,10 +6,11 @@ import pickle
 import re
 
 
+unique_paths = set()
 unique_pages = set()                    # Keeps track of all unique pages
 crawled_urls = set()                    # Keeps track of crawled urls
 subdomains = set()                      # Keeps track of all subdomains
-subdomain_pages = defaultdict(set)      # Keeps track of all unique pages per subdomain for ics.uci.edu
+subdomain_pages = defaultdict(int)      # Keeps track of all unique pages per subdomain for ics.uci.edu
 blacklist = set()                       # Keeps track of all urls that should be banned from accessing
 
 longest_page_url = ""                   # Keeps track of page with most words
@@ -21,35 +22,38 @@ def scraper(url: str, resp):
     try:
         x = urlopen(url)
     except:
-        print("---HTTP Error in scraper(), skipping")
+        #print("---HTTP Error in scraper(), skipping")
         return []
 
-    # if is_valid(url) and resp.status == 200:
-    if is_valid(url) and x.getcode() == 200:
-        print("\n\nCrawling...", url)
+    # if is_valid(url) and x.getcode() == 200:
+    if is_valid(url) and resp.status == 200:
+        #print("\n\nCrawling...", url)
         defrag_url = urldefrag(url)[0]
         parsed = urlparse(defrag_url)
         host = parsed.hostname
         path = parsed.path
         unique_url = get_unique_page(url)
+        unique_path = get_path_page(url)
 
         if ".ics.uci.edu/" in url:
             ics_subdomains(url)
 
+        global unique_paths
+        unique_paths.add(unique_path)
         global unique_pages
         unique_pages.add(unique_url)
-        update_word_count(unique_url)
+        update_word_count(unique_url, resp)
 
-        print("Unique pages: ", len(unique_pages))
-        print("Subdomain_pages: ", {key: len(val) for key, val in subdomain_pages.items()})
-        print("Longest Page URL: ", longest_page_url)
-        print("Longest Word Count: ", longest_page_word_count)
+        #print("Unique pages: ", len(unique_pages))
+        #print("Subdomain_pages: ", {key: len(val) for key, val in subdomain_pages.items()})
+        #print("Longest Page URL: ", longest_page_url)
+        #print("Longest Word Count: ", longest_page_word_count)
 
         links = extract_next_links(defrag_url, resp)
-        print("Next links {}: {}".format(len(links), links))
+        #print("Next links {}: {}".format(len(links), links))
         return [link for link in links]
     else:
-        print("\n---INVALID: ", url, x.getcode())
+        # print("\n---INVALID: ", url, x.getcode())
         return []
 
 
@@ -60,7 +64,8 @@ def extract_next_links(url, resp):
     scheme = parsed.scheme
 
     links = []
-    page = urlopen(url)
+    # page = urlopen(url)
+    page = resp.resp.raw_response.content
     html_object = BeautifulSoup(page, "html.parser")
     for a_tag in html_object.find_all('a'):
         link = a_tag.get('href')
@@ -88,7 +93,7 @@ def is_valid(url):
         valid_scheme = parsed.scheme in set(["http", "https"])
 
         poss_traps = ["/event/", "/events/", "calendar", "date", "gallery",
-                      "image", "wp-content", "index.php", "upload", "?share="]
+                      "image", "wp-content", "index.php", "upload", "?share=", "ical"]
         no_possible_traps = not any(trap in url for trap in poss_traps)
 
         no_extension = not re.match(
@@ -104,8 +109,8 @@ def is_valid(url):
         if not all([valid_hostname, valid_scheme, no_extension, no_possible_traps]):
             return False
         else:
-            unique_url = get_unique_page(url)
-            if unique_url in unique_pages:
+            unique_path = get_path_page(url)
+            if unique_path in unique_paths:
                 forum_traps = ["#comment-", "?replytocom="]
                 return not any(trap in url for trap in forum_traps)
             else:
@@ -115,7 +120,7 @@ def is_valid(url):
         # return valid_hostname and valid_scheme and no_extension and no_possible_traps and no_forum_traps
 
     except TypeError:
-        print("TypeError for ", parsed)
+        #print("TypeError for ", parsed)
         raise
 
 # store the stopwords
@@ -174,7 +179,7 @@ stopwords.update(['yours', 'yourself', 'yourselves'])
 
 
 # Function for #2
-def update_word_count(url):
+def update_word_count(url, resp):
     global all_words
     global longest_page_url
     global longest_page_word_count
@@ -183,7 +188,8 @@ def update_word_count(url):
     word_counter = 0
 
     try:
-        page = urlopen(url)
+        # page = urlopen(url)
+        page = resp.raw_response.content
         soup = BeautifulSoup(page, 'html.parser')
         content = soup.get_text()
 
@@ -212,7 +218,8 @@ def update_word_count(url):
             longest_page_word_count = word_counter
 
     except:
-        print("---HTTP Error in update_word_count(), skipping")
+        # print("---HTTP Error in update_word_count(), skipping")
+        pass
 
 
 def top_50_common():
@@ -224,7 +231,7 @@ def top_50_common():
 
 
 def ics_subdomains(url):
-    global subdomains           # ex: subdomains = {"vision", "grape"}
+    # global subdomains           # ex: subdomains = {"vision", "grape"}
     global subdomain_pages      # ex: subdomain_pages = {"https://vision.ics.uci.edu": {}}
 
     # extract subdomain name
@@ -235,62 +242,120 @@ def ics_subdomains(url):
     if "www." in subdomain:
         subdomain = subdomain[4:]
 
-    subdomains.add(subdomain)
+    # subdomains.add(subdomain)
 
     unique_page_url = get_unique_page(url)
-    subdomain_pages[subdomain].add(unique_page_url)
+    if unique_page_url not in unique_pages:
+        subdomain_pages[subdomain] += 1
 
 
 def get_unique_page(url):
+    return urldefrag(url)[0]
+
+def get_path_page(url):
     parse = urlparse(url)
     return parse.scheme + "://" + parse.hostname + parse.path
 
+def print_report():
+    print("--------------- CS 121 Report ---------------")
+    print()
+    print("Team: Alvin Nguyen [80452034], Paul Le [62609666], Bao Duy Ly [72926167] ")
+    print()
+    print("Number of Unique URLs:", len(unique_pages))
+    print()
+    print("Longest URL:", longest_page_url)
+    print("Word Count:", longest_page_word_count)
+    print()
 
-if __name__ == "__main__":
-    frontier = ["https://www.ics.uci.edu", "https://www.cs.uci.edu",
-                "https://www.informatics.uci.edu", "https://www.stat.uci.edu",
-                "https://today.uci.edu/department/information_computer_sciences"]
-    while True:
-        l = frontier.pop(0)
-        frontier.extend(scraper(l, 200))
-        print("Frontier: {}".format(frontier[1:]))
+    print("50 Most Common Words:")
+    counter = 1
+    for key, value in sorted(all_words.items(), key=lambda x: x[1], reverse=True):
+        if counter <= 50:
+            print(str(counter) + ". " + key + " (" + str(value) + ")")
+            counter = int(counter)
+            counter += 1
+        else:
+            break
+    print()
+    print("Subdomains in ics.uci.edu:")
+    for subdomain, val in sorted(subdomain_pages.items(), key=lambda x: x[0], reverse=True):
+        print(subdomain + ": " + str(val))
+    print()
+    print("--------------- CS 121 Report ---------------")
 
-    # write unique pages into text
-    with open('up.data', 'wb') as up:
-        pickle.dump(unique_pages, up)
-
-    # write longest page into text
-    with open('lp.data', 'wb') as lp:
-        pickle.dump(longest_page_url, lp)
-
-    # write common words into text
-    with open('cw.data', 'wb') as cw:
-        pickle.dump(top_50_common(), cw)
-
-    # write subdomains and unique pages into text
-    with open('sp.data', 'wb') as sp:
-        pickle.dump(subdomain_pages, sp)
-
-    ##############################
-    #  Printing out information  #
-    ##############################
-
-    # load unique pages
-    with open('up.data', 'rb') as up:
-        load_up = pickle.load(up)
-        print(load_up)
-
-    # load longest page
-    with open('lp.data', 'rb') as lp:
-        load_lp = pickle.load(lp)
-        print(load_lp)
-
-    # load common words
-    with open('cw.data', 'rb') as cw:
-        load_cw = pickle.load(cw)
-        print(load_cw)
-
-    # load subdomains and unique pages
-    with open('sp.data', 'rb') as sp:
-        load_sp = pickle.load(sp)
-        print(load_sp)
+# if __name__ == "__main__":
+#     counter = 1
+#     frontier = ["https://www.ics.uci.edu/", "https://www.cs.uci.edu/",
+#                 "https://www.informatics.uci.edu/", "https://www.stat.uci.edu/",
+#                 "https://today.uci.edu/department/information_computer_sciences/"]
+#     while counter < 1000:
+#         l = frontier.pop(0)
+#         frontier.extend(scraper(l, 200))
+#         # print("Frontier: {}".format(frontier[1:]))
+#         counter += 1
+#
+#     print("--------------- CS 121 Report ---------------")
+#     print()
+#     print("Team: Alvin Nguyen [80452034], Paul Le [62609666], Bao Duy Ly [72926167] ")
+#     print()
+#     print("Number of Unique URLs:", len(unique_pages))
+#     print()
+#     print("Longest URL:", longest_page_url)
+#     print("Word Count:", longest_page_word_count)
+#     print()
+#
+#     print("50 Most Common Words:")
+#     counter = 1
+#     for key, value in sorted(all_words.items(), key=lambda x: x[1], reverse=True):
+#         if counter <= 50:
+#             print(str(counter) + ". " + key + " (" + str(value) + ")")
+#             counter = int(counter)
+#             counter += 1
+#         else:
+#             break
+#     print()
+#     print("Subdomains in ics.uci.edu:")
+#     for subdomain, val in sorted(subdomain_pages.items(), key=lambda x: x[0], reverse=True):
+#         print(subdomain + ": " + val)
+#     print()
+#     print("--------------- CS 121 Report ---------------")
+#
+#     # write unique pages into text
+#     with open('up.data', 'wb') as up:
+#         pickle.dump(unique_pages, up)
+#
+#     # write longest page into text
+#     with open('lp.data', 'wb') as lp:
+#         pickle.dump(longest_page_url, lp)
+#
+#     # write common words into text
+#     with open('cw.data', 'wb') as cw:
+#         pickle.dump(top_50_common(), cw)
+#
+#     # write subdomains and unique pages into text
+#     with open('sp.data', 'wb') as sp:
+#         pickle.dump(subdomain_pages, sp)
+#
+#     ##############################
+#     #  Printing out information  #
+#     ##############################
+#
+#     # load unique pages
+#     with open('up.data', 'rb') as up:
+#         load_up = pickle.load(up)
+#         print(load_up)
+#
+#     # load longest page
+#     with open('lp.data', 'rb') as lp:
+#         load_lp = pickle.load(lp)
+#         print(load_lp)
+#
+#     # load common words
+#     with open('cw.data', 'rb') as cw:
+#         load_cw = pickle.load(cw)
+#         print(load_cw)
+#
+#     # load subdomains and unique pages
+#     with open('sp.data', 'rb') as sp:
+#         load_sp = pickle.load(sp)
+#         print(load_sp)
