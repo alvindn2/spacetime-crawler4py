@@ -1,0 +1,81 @@
+--------------- CS 121 Report ---------------
+Team: Alvin Nguyen [80452034], Paul Le [62609666], Bao Duy Ly [72926167]
+
+Number of Unique URLs: 3188
+
+Longest URL: http://www.ics.uci.edu/~wjohnson/BIDA/Ch8/prioriterates.txt
+Word Count: 78455
+
+50 Most Common Words:
+1. ramesh (11213)
+2. research (9150)
+3. events (9003)
+4. students (8665)
+5. news (7705)
+6. information (6995)
+7. computer (6410)
+8. current (6167)
+9. uci (5876)
+10. policies (5824)
+11. jain (5695)
+12. school (5612)
+13. computing (5520)
+14. bren (5502)
+15. past (5403)
+16. ics (5015)
+17. the (4749)
+18. contact (4467)
+19. courses (4416)
+20. social (4196)
+21. about (4181)
+22. search (4126)
+23. companies (3996)
+24. read (3846)
+25. people (3824)
+26. books (3710)
+27. data (3671)
+28. academic (3579)
+29. theme (3541)
+30. student (3513)
+31. favorite (3473)
+32. donald (3457)
+33. new (3333)
+34. experiential (3282)
+35. wics (3229)
+36. comments (3115)
+37. projects (3051)
+38. science (3022)
+39. time (2910)
+40. blogs (2875)
+41. sciences (2854)
+42. email (2803)
+43. personal (2767)
+44. faculty (2714)
+45. reply (2686)
+46. graduate (2672)
+47. multimedia (2653)
+48. vision (2614)
+49. 2018 (2612)
+50. media (2611)
+
+Subdomains in ics.uci.edu:
+www: 765
+wics: 448
+vision: 4
+support: 1
+studentcouncil: 1
+ngs: 1688
+mswe: 16
+mse: 2
+motifmap-rna: 1
+motifmap: 1
+isg: 16
+industryshowcase: 6
+helpdesk: 1
+evoke: 71
+cwicsocal18: 11
+cml: 45
+cert: 1
+cbcl: 21
+archive: 1
+--------------- CS 121 Report ---------------

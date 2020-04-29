@@ -1,57 +1,46 @@
 from urllib.parse import urlparse, urldefrag
 from urllib.request import urlopen
 from bs4 import BeautifulSoup
-from collections import Counter, defaultdict
+from collections import defaultdict
 import pickle
 import re
 
+unique_pages = set()  # Keeps track of all unique pages
+crawled_urls = set()  # Keeps track of crawled urls
+subdomain_pages = defaultdict(int)  # Keeps track of all unique pages per subdomain for ics.uci.edu
 
-unique_paths = set()
-unique_pages = set()                    # Keeps track of all unique pages
-crawled_urls = set()                    # Keeps track of crawled urls
-subdomains = set()                      # Keeps track of all subdomains
-subdomain_pages = defaultdict(int)      # Keeps track of all unique pages per subdomain for ics.uci.edu
-blacklist = set()                       # Keeps track of all urls that should be banned from accessing
-
-longest_page_url = ""                   # Keeps track of page with most words
-longest_page_word_count = 0             # Keeps track of the number of words of the largest file
-all_words = defaultdict(int)            # Keeps track of all words and their frequencies
+longest_page_url = ""  # Keeps track of page with most words
+longest_page_word_count = 0  # Keeps track of the number of words of the largest file
+all_words = defaultdict(int)  # Keeps track of all words and their frequencies
 
 
 def scraper(url: str, resp):
     try:
         x = urlopen(url)
     except:
-        #print("---HTTP Error in scraper(), skipping")
+        # print("---HTTP Error in scraper(), skipping")
         return []
 
-    # if is_valid(url) and x.getcode() == 200:
-    if is_valid(url) and resp.status == 200:
-        #print("\n\nCrawling...", url)
-        defrag_url = urldefrag(url)[0]
-        parsed = urlparse(defrag_url)
-        host = parsed.hostname
-        path = parsed.path
+    # if is_valid(url) and resp.status == 200: # USE THIS CODE FOR REAL CRAWL
+    if is_valid(url) and x.getcode() == 200:
+        print("\n\nCrawling...", url)
         unique_url = get_unique_page(url)
-        unique_path = get_path_page(url)
 
         if ".ics.uci.edu/" in url:
             ics_subdomains(url)
 
-        global unique_paths
-        unique_paths.add(unique_path)
         global unique_pages
         unique_pages.add(unique_url)
         update_word_count(unique_url, resp)
 
-        #print("Unique pages: ", len(unique_pages))
-        #print("Subdomain_pages: ", {key: len(val) for key, val in subdomain_pages.items()})
-        #print("Longest Page URL: ", longest_page_url)
-        #print("Longest Word Count: ", longest_page_word_count)
+        # print("Unique pages: ", len(unique_pages))
+        # print("Subdomain_pages: ", {key: len(val) for key, val in subdomain_pages.items()})
+        # print("Longest Page URL: ", longest_page_url)
+        # print("Longest Word Count: ", longest_page_word_count)
 
-        links = extract_next_links(defrag_url, resp)
-        #print("Next links {}: {}".format(len(links), links))
-        return [link for link in links]
+        links = extract_next_links(url, resp)
+        # print("Next links {}: {}".format(len(links), links))
+        return links
     else:
         # print("\n---INVALID: ", url, x.getcode())
         return []
@@ -64,21 +53,26 @@ def extract_next_links(url, resp):
     scheme = parsed.scheme
 
     links = []
-    # page = urlopen(url)
-    page = resp.resp.raw_response.content
-    html_object = BeautifulSoup(page, "html.parser")
-    for a_tag in html_object.find_all('a'):
-        link = a_tag.get('href')
-        if type(link) is not str:
-            continue
-        if link.startswith("//"):
-            link = link[2:]
-        elif link.startswith("/"):
-            link = scheme+"://"+host+link
-        if link not in unique_pages and link not in crawled_urls and is_valid(link):
-            crawled_urls.add(link)
-            links.append(link)
-    return links
+    try:
+        # page = resp.raw_response.content # USE THIS CODE FOR REAL CRAWL
+        page = urlopen(url)
+        html_object = BeautifulSoup(page, "html.parser")
+        for a_tag in html_object.find_all('a'):
+            link = a_tag.get('href')
+            if type(link) is not str:
+                continue
+            if link.startswith("//"):
+                link = link[2:]
+            elif link.startswith("/"):
+                link = scheme + "://" + host + link
+
+            link_defrag = urldefrag(link)[0]
+            if link_defrag not in unique_pages and link not in crawled_urls and is_valid(link):
+                crawled_urls.add(link)
+                links.append(link)
+        return links
+    except:
+        return []
 
 
 def is_valid(url):
@@ -86,15 +80,24 @@ def is_valid(url):
         defrag_url = urldefrag(url)[0]
         parsed = urlparse(defrag_url)
 
-        valid_hosts = [".ics.uci.edu/", ".cs.uci.edu/", ".informatics.uci.edu/", ".stat.uci.edu/",
-                       "today.uci.edu/department/information_computer_sciences/"]
+        valid_hosts = [".ics.uci.edu", ".cs.uci.edu", ".informatics.uci.edu", ".stat.uci.edu",
+                       "today.uci.edu/department/information_computer_sciences"]
         valid_hostname = any(host in url for host in valid_hosts)
+
+        is_uci_domain = "uci.edu" in parsed.hostname
 
         valid_scheme = parsed.scheme in set(["http", "https"])
 
         poss_traps = ["/event/", "/events/", "calendar", "date", "gallery",
-                      "image", "wp-content", "index.php", "upload", "?share=", "ical"]
+                      "image", "wp-content", "index.php", "upload", "ical",
+                      "/share", "/pdf", "/signup", "attachment/"]
+
+        pos_queries = ["?limit=", "redirect=", "?share=", "?format=",
+                       "?do=", "?version=", "?from=", "?action=",
+                       "#comment", "?replytocom=", "#respond", "?rev="]
+
         no_possible_traps = not any(trap in url for trap in poss_traps)
+        no_possible_queries = not any(que in url for que in pos_queries)
 
         no_extension = not re.match(
             r".*\.(css|js|bmp|gif|jpe?g|ico"
@@ -103,25 +106,15 @@ def is_valid(url):
             + r"|ps|eps|tex|ppt|pptx|doc|docx|xls|xlsx|names"
             + r"|data|dat|exe|bz2|tar|msi|bin|7z|psd|dmg|iso"
             + r"|epub|dll|cnf|tgz|sha1"
-            + r"|thmx|mso|arff|rtf|jar|csv|odc"
-            + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower())
+            + r"|thmx|mso|arff|rtf|jar|csv|odc|ppsx"
+            + r"|rm|smil|wmv|swf|wma|zip|rar|gz|ps\.z)$", url.lower())
 
-        if not all([valid_hostname, valid_scheme, no_extension, no_possible_traps]):
-            return False
-        else:
-            unique_path = get_path_page(url)
-            if unique_path in unique_paths:
-                forum_traps = ["#comment-", "?replytocom="]
-                return not any(trap in url for trap in forum_traps)
-            else:
-                return True
+        return all([valid_hostname, is_uci_domain, valid_scheme, no_extension, no_possible_traps, no_possible_queries])
 
+    except:
+        # print("TypeError for ", parsed)
+        pass
 
-        # return valid_hostname and valid_scheme and no_extension and no_possible_traps and no_forum_traps
-
-    except TypeError:
-        #print("TypeError for ", parsed)
-        raise
 
 # store the stopwords
 stopwords = set()
@@ -188,8 +181,8 @@ def update_word_count(url, resp):
     word_counter = 0
 
     try:
-        # page = urlopen(url)
-        page = resp.raw_response.content
+        # page = resp.raw_response.content # USE THIS CODE FOR REAL CRAWL
+        page = urlopen(url)
         soup = BeautifulSoup(page, 'html.parser')
         content = soup.get_text()
 
@@ -207,7 +200,7 @@ def update_word_count(url, resp):
                 all_words[token.lower()] += 1
 
         # Means that there cannot be 10x as many total words as there are unique words in a file.
-        few_duplicates = (word_counter/len(unique_words)) < 10
+        few_duplicates = (word_counter / len(unique_words)) < 10
         # Checks to make sure there are at least 100 words in a file, not too low information
         large_word_count = word_counter > 50
         # Checks if the number of words is larger than current largest file
@@ -222,17 +215,8 @@ def update_word_count(url, resp):
         pass
 
 
-def top_50_common():
-    # Top 50 common words (not sure if we can use Counter...)
-    d = dict(all_words)
-    counts = Counter(d)
-    top_50_words = counts.most_common(50)
-    return top_50_words
-
-
 def ics_subdomains(url):
-    # global subdomains           # ex: subdomains = {"vision", "grape"}
-    global subdomain_pages      # ex: subdomain_pages = {"https://vision.ics.uci.edu": {}}
+    global subdomain_pages  # ex: subdomain_pages = {"https://vision.ics.uci.edu": {}}
 
     # extract subdomain name
     parse = urlparse(url)
@@ -242,8 +226,6 @@ def ics_subdomains(url):
     if "www." in subdomain:
         subdomain = subdomain[4:]
 
-    # subdomains.add(subdomain)
-
     unique_page_url = get_unique_page(url)
     if unique_page_url not in unique_pages:
         subdomain_pages[subdomain] += 1
@@ -252,74 +234,48 @@ def ics_subdomains(url):
 def get_unique_page(url):
     return urldefrag(url)[0]
 
+
 def get_path_page(url):
     parse = urlparse(url)
     return parse.scheme + "://" + parse.hostname + parse.path
 
+
 def print_report():
-    print("--------------- CS 121 Report ---------------")
-    print()
-    print("Team: Alvin Nguyen [80452034], Paul Le [62609666], Bao Duy Ly [72926167] ")
-    print()
-    print("Number of Unique URLs:", len(unique_pages))
-    print()
-    print("Longest URL:", longest_page_url)
-    print("Word Count:", longest_page_word_count)
-    print()
+    with open("report.txt", "w") as f:
+        f.write("--------------- CS 121 Report ---------------\n")
+        f.write("Team: Alvin Nguyen [80452034], Paul Le [62609666], Bao Duy Ly [72926167]")
+        f.write("\n\nNumber of Unique URLs: " + str(len(unique_pages)))
+        f.write("\n\nLongest URL: " + longest_page_url)
+        f.write("\nWord Count: " + str(longest_page_word_count))
+        f.write("\n\n50 Most Common Words:")
+        counter = 1
+        for key, value in sorted(all_words.items(), key=lambda x: x[1], reverse=True):
+            if counter <= 50:
+                f.write('\n' + str(counter) + ". " + key + " (" + str(value) + ")")
+                counter = int(counter)
+                counter += 1
+            else:
+                break
+        f.write("\n\nSubdomains in ics.uci.edu:")
+        for subdomain, val in sorted(subdomain_pages.items(), key=lambda x: x[0], reverse=True):
+            f.write("\n" + subdomain + ": " + str(val))
+        f.write("\n--------------- CS 121 Report ---------------")
 
-    print("50 Most Common Words:")
+
+# COMMENT OUT MAIN CODE FOR REAL CRAWL
+if __name__ == "__main__":
     counter = 1
-    for key, value in sorted(all_words.items(), key=lambda x: x[1], reverse=True):
-        if counter <= 50:
-            print(str(counter) + ". " + key + " (" + str(value) + ")")
-            counter = int(counter)
-            counter += 1
-        else:
-            break
-    print()
-    print("Subdomains in ics.uci.edu:")
-    for subdomain, val in sorted(subdomain_pages.items(), key=lambda x: x[0], reverse=True):
-        print(subdomain + ": " + str(val))
-    print()
-    print("--------------- CS 121 Report ---------------")
+    frontier = ["https://www.ics.uci.edu/", "https://www.cs.uci.edu/",
+                "https://www.informatics.uci.edu/", "https://www.stat.uci.edu/",
+                "https://today.uci.edu/department/information_computer_sciences/"]
+    # while counter < 1000: # USE THIS TO LIMIT CRAWLS TO SAVE TIME
+    while True:
+        l = frontier.pop(0)
+        frontier.extend(scraper(l, 200))
+        # print("Frontier: {}".format(frontier[1:]))
+        counter += 1
 
-# if __name__ == "__main__":
-#     counter = 1
-#     frontier = ["https://www.ics.uci.edu/", "https://www.cs.uci.edu/",
-#                 "https://www.informatics.uci.edu/", "https://www.stat.uci.edu/",
-#                 "https://today.uci.edu/department/information_computer_sciences/"]
-#     while counter < 1000:
-#         l = frontier.pop(0)
-#         frontier.extend(scraper(l, 200))
-#         # print("Frontier: {}".format(frontier[1:]))
-#         counter += 1
-#
-#     print("--------------- CS 121 Report ---------------")
-#     print()
-#     print("Team: Alvin Nguyen [80452034], Paul Le [62609666], Bao Duy Ly [72926167] ")
-#     print()
-#     print("Number of Unique URLs:", len(unique_pages))
-#     print()
-#     print("Longest URL:", longest_page_url)
-#     print("Word Count:", longest_page_word_count)
-#     print()
-#
-#     print("50 Most Common Words:")
-#     counter = 1
-#     for key, value in sorted(all_words.items(), key=lambda x: x[1], reverse=True):
-#         if counter <= 50:
-#             print(str(counter) + ". " + key + " (" + str(value) + ")")
-#             counter = int(counter)
-#             counter += 1
-#         else:
-#             break
-#     print()
-#     print("Subdomains in ics.uci.edu:")
-#     for subdomain, val in sorted(subdomain_pages.items(), key=lambda x: x[0], reverse=True):
-#         print(subdomain + ": " + val)
-#     print()
-#     print("--------------- CS 121 Report ---------------")
-#
+# I don't think we'll be using this code anymore
 #     # write unique pages into text
 #     with open('up.data', 'wb') as up:
 #         pickle.dump(unique_pages, up)
